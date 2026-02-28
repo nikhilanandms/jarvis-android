@@ -1,4 +1,4 @@
-package com.example.jarvis
+package com.jarvis.android
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity

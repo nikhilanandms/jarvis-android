@@ -1,4 +1,4 @@
-package com.example.jarvis.ui.theme
+package com.jarvis.android.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

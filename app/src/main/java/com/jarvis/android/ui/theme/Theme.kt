@@ -1,4 +1,4 @@
-package com.example.jarvis.ui.theme
+package com.jarvis.android.ui.theme
 
 import android.app.Activity
 import android.os.Build

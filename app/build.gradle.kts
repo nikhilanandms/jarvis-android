@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.jarvis"
+    namespace = "com.jarvis.android"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -12,7 +12,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.jarvis"
+        applicationId = "com.jarvis.android"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
