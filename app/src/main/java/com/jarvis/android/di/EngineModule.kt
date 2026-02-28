@@ -27,7 +27,7 @@ object EngineModule {
     @Provides
     @Singleton
     fun provideLLMEngine(@ApplicationContext context: Context): LLMEngine {
-        val path = context.getExternalFilesDir(null)!!.absolutePath + "/gemma3-1b-it-int4.task"
+        val path = context.getExternalFilesDir(null)!!.absolutePath + "/gemma-1.1-2b-it-cpu-int4.bin"
         return LLMEngine(context, path)
     }
 

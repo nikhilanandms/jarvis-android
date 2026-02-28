@@ -38,10 +38,10 @@ class DownloadViewModel @Inject constructor(
             val base = context.getExternalFilesDir(null)?.absolutePath ?: return@launch
             _models.value = listOf(
                 ModelStatus(
-                    name = "Gemma 3 1B (LLM)",
-                    description = "~600 MB · Place at path below",
-                    path = "$base/gemma3-1b-it-int4.task",
-                    exists = File("$base/gemma3-1b-it-int4.task").exists()
+                    name = "Gemma 1.1 2B CPU INT4 (LLM)",
+                    description = "~1.3 GB · Place at path below",
+                    path = "$base/gemma-1.1-2b-it-cpu-int4.bin",
+                    exists = File("$base/gemma-1.1-2b-it-cpu-int4.bin").exists()
                 ),
                 ModelStatus(
                     name = "Whisper Tiny (STT)",
