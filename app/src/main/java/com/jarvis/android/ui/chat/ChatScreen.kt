@@ -69,7 +69,7 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
     Scaffold(
         bottomBar = {
             Column {
-                StateIndicatorBar(state)
+                StateIndicatorBar(state = state, voiceActive = voiceActive)
                 InputBar(
                     text = textInput,
                     onTextChange = { textInput = it },
@@ -115,13 +115,14 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun StateIndicatorBar(state: OrchestratorState) {
+private fun StateIndicatorBar(state: OrchestratorState, voiceActive: Boolean) {
     val label = when (state) {
-        OrchestratorState.LISTENING     -> "Listening…"
-        OrchestratorState.TRANSCRIBING  -> "Transcribing…"
-        OrchestratorState.THINKING      -> "Thinking…"
-        OrchestratorState.SPEAKING      -> "Speaking…"
-        OrchestratorState.IDLE          -> ""
+        // Only show "Listening…" when the user explicitly started voice mode
+        OrchestratorState.LISTENING    -> if (voiceActive) "Listening…" else ""
+        OrchestratorState.TRANSCRIBING -> "Transcribing…"
+        OrchestratorState.THINKING     -> "Thinking…"
+        OrchestratorState.SPEAKING     -> "Speaking…"
+        OrchestratorState.IDLE         -> ""
     }
     if (label.isEmpty()) return
 

@@ -49,11 +49,11 @@ class ChatViewModel @Inject constructor(
         }
         viewModelScope.launch {
             orchestratorState.collect { state ->
-                // Clear streaming display when a response is fully saved to DB
-                if (state == OrchestratorState.IDLE || state == OrchestratorState.LISTENING) {
+                // Clear streaming bubble only when a new request starts (THINKING)
+                if (state == OrchestratorState.THINKING) {
                     _currentResponse.value = ""
                 }
-                // Voice is only active during the listening state
+                // Keep voiceActive in sync: false unless actively listening
                 if (state != OrchestratorState.LISTENING) _voiceActive.value = false
             }
         }
@@ -61,20 +61,19 @@ class ChatViewModel @Inject constructor(
 
     fun startVoiceChat() {
         if (convId == -1L) return
-        _currentResponse.value = ""
         _voiceActive.value = true
         orchestrator.startListening(convId, viewModelScope)
     }
 
-    /** Only stops VOICE — does not interrupt an in-progress text LLM response. */
+    /** Only stops VOICE — does not cancel in-progress LLM inference. */
     fun stopVoiceChat() {
         _voiceActive.value = false
-        orchestrator.stop()
+        orchestrator.stopListening()
     }
 
     fun sendTextMessage(text: String) {
         if (convId == -1L || text.isBlank()) return
-        _currentResponse.value = ""
+        // orchestrator.submitText handles stopping voice if needed
         orchestrator.submitText(text, convId, viewModelScope)
     }
 

@@ -158,6 +158,8 @@ class ConversationOrchestrator @Inject constructor(
      * Skips the audio/transcription step — goes straight to THINKING → SPEAKING.
      */
     fun submitText(text: String, convId: Long, scope: CoroutineScope) {
+        // Stop voice if listening, but don't cancel an already-running inference
+        if (_state.value == OrchestratorState.LISTENING) stopListening()
         if (_state.value != OrchestratorState.IDLE) return
         _state.value = OrchestratorState.THINKING  // guard BEFORE launching coroutine
         inferenceJob = scope.launch(Dispatchers.Default) {
@@ -199,11 +201,25 @@ class ConversationOrchestrator @Inject constructor(
         }
     }
 
-    /** Stop all ongoing activity and return to IDLE. */
+    /**
+     * Stop voice listening only — does NOT cancel in-progress LLM inference.
+     * Call this before submitting a text message if voice might be active.
+     */
+    fun stopListening() {
+        listeningJob?.cancel()
+        listeningJob = null
+        if (_state.value == OrchestratorState.LISTENING) {
+            _state.value = OrchestratorState.IDLE
+        }
+    }
+
+    /** Stop all ongoing activity (voice + inference) and return to IDLE. */
     fun stop() {
         listeningJob?.cancel()
         inferenceJob?.cancel()
         ttsEngine.stop()
+        listeningJob = null
+        inferenceJob = null
         _state.value = OrchestratorState.IDLE
     }
 }
