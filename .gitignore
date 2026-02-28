@@ -13,3 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Model files — too large for git
+*.bin
+*.task
+*.onnx
