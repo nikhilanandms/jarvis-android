@@ -17,4 +17,4 @@ local.properties
 # Model files — too large for git
 *.bin
 *.task
-*.onnx
+# *.onnx  — silero_vad.onnx is in assets and tracked intentionally
