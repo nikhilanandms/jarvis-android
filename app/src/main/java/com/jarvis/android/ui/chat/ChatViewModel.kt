@@ -10,10 +10,8 @@ import com.jarvis.android.data.repository.ConversationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -30,9 +28,12 @@ class ChatViewModel @Inject constructor(
     private val _messages = MutableStateFlow<List<MessageEntity>>(emptyList())
     val messages: StateFlow<List<MessageEntity>> = _messages.asStateFlow()
 
-    // Accumulates streaming tokens for live display
     private val _currentResponse = MutableStateFlow("")
     val currentResponse: StateFlow<String> = _currentResponse.asStateFlow()
+
+    // True only when VOICE is actively listening — mic button uses this, not orchestratorState
+    private val _voiceActive = MutableStateFlow(false)
+    val voiceActive: StateFlow<Boolean> = _voiceActive.asStateFlow()
 
     private var convId: Long = -1L
 
@@ -43,17 +44,17 @@ class ChatViewModel @Inject constructor(
         }
         viewModelScope.launch {
             streamingResponse.collect { token ->
-                if (orchestratorState.value == OrchestratorState.THINKING ||
-                    orchestratorState.value == OrchestratorState.SPEAKING) {
-                    _currentResponse.value += token
-                }
+                _currentResponse.value += token
             }
         }
         viewModelScope.launch {
             orchestratorState.collect { state ->
-                if (state == OrchestratorState.LISTENING || state == OrchestratorState.IDLE) {
+                // Clear streaming display when a response is fully saved to DB
+                if (state == OrchestratorState.IDLE || state == OrchestratorState.LISTENING) {
                     _currentResponse.value = ""
                 }
+                // Voice is only active during the listening state
+                if (state != OrchestratorState.LISTENING) _voiceActive.value = false
             }
         }
     }
@@ -61,17 +62,20 @@ class ChatViewModel @Inject constructor(
     fun startVoiceChat() {
         if (convId == -1L) return
         _currentResponse.value = ""
+        _voiceActive.value = true
         orchestrator.startListening(convId, viewModelScope)
     }
 
-    fun stopVoiceChat() = orchestrator.stop()
+    /** Only stops VOICE — does not interrupt an in-progress text LLM response. */
+    fun stopVoiceChat() {
+        _voiceActive.value = false
+        orchestrator.stop()
+    }
 
     fun sendTextMessage(text: String) {
         if (convId == -1L || text.isBlank()) return
-        viewModelScope.launch {
-            conversationRepo.addMessage(convId, "user", text)
-            // TODO: trigger LLM response for text-only input (Task 16 / future)
-        }
+        _currentResponse.value = ""
+        orchestrator.submitText(text, convId, viewModelScope)
     }
 
     override fun onCleared() {

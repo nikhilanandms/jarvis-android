@@ -54,6 +54,7 @@ import com.jarvis.android.data.db.entities.MessageEntity
 fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
     val messages by viewModel.messages.collectAsState()
     val state by viewModel.orchestratorState.collectAsState()
+    val voiceActive by viewModel.voiceActive.collectAsState()
     val currentResponse by viewModel.currentResponse.collectAsState()
     val listState = rememberLazyListState()
     var textInput by remember { mutableStateOf("") }
@@ -77,10 +78,10 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
                         textInput = ""
                     },
                     onMicToggle = {
-                        if (state == OrchestratorState.IDLE) viewModel.startVoiceChat()
-                        else viewModel.stopVoiceChat()
+                        if (voiceActive) viewModel.stopVoiceChat()
+                        else viewModel.startVoiceChat()
                     },
-                    isActive = state != OrchestratorState.IDLE
+                    isActive = voiceActive
                 )
             }
         }
@@ -149,27 +150,30 @@ private fun InputBar(
     onMicToggle: () -> Unit,
     isActive: Boolean
 ) {
+    // Mic button is always on the left — fixed position prevents layout shift on send
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        MicButton(isActive = isActive, onClick = onMicToggle)
+        Spacer(Modifier.width(6.dp))
         OutlinedTextField(
             value = text,
             onValueChange = onTextChange,
             modifier = Modifier.weight(1f),
-            placeholder = { Text("Type or tap mic…") },
+            placeholder = { Text("Type a message…") },
             maxLines = 4,
-            shape = RoundedCornerShape(24.dp)
-        )
-        Spacer(Modifier.width(6.dp))
-        if (text.isNotBlank()) {
-            IconButton(onClick = onSend) {
-                Icon(Icons.Default.Send, contentDescription = "Send")
+            shape = RoundedCornerShape(24.dp),
+            trailingIcon = {
+                if (text.isNotBlank()) {
+                    IconButton(onClick = onSend) {
+                        Icon(Icons.Default.Send, contentDescription = "Send")
+                    }
+                }
             }
-        }
-        MicButton(isActive = isActive, onClick = onMicToggle)
+        )
     }
 }
 

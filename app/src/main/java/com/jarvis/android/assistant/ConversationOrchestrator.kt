@@ -54,15 +54,20 @@ class ConversationOrchestrator @Inject constructor(
     /** Start the continuous voice chat loop for [convId]. No-op if already listening. */
     fun startListening(convId: Long, scope: CoroutineScope) {
         if (_state.value != OrchestratorState.IDLE) return
-        _state.value = OrchestratorState.LISTENING
+        _state.value = OrchestratorState.LISTENING  // guard BEFORE launching coroutine
         vadEngine.reset()
 
         listeningJob = scope.launch(Dispatchers.Default) {
             val pcmBuffer = mutableListOf<Float>()
             var speechActive = false
+            var chunkCount = 0
 
             audioRecorder.record().collect { chunk ->
                 val isSpeech = vadEngine.isSpeech(chunk)
+                chunkCount++
+                if (chunkCount % 50 == 0) {
+                    android.util.Log.d("Orchestrator", "chunks=$chunkCount speechActive=$speechActive isSpeech=$isSpeech")
+                }
 
                 when {
                     // Barge-in: user speaks while Jarvis is talking
@@ -96,9 +101,11 @@ class ConversationOrchestrator @Inject constructor(
     }
 
     private suspend fun processUtterance(pcm: FloatArray, convId: Long, scope: CoroutineScope) {
+        android.util.Log.d("Orchestrator", "processUtterance: ${pcm.size} samples")
         // Transcribe
         _state.value = OrchestratorState.TRANSCRIBING
         val transcript = whisperEngine.transcribe(pcm)
+        android.util.Log.d("Orchestrator", "transcript: '$transcript'")
         if (transcript.isBlank()) {
             _state.value = OrchestratorState.LISTENING
             return
@@ -143,6 +150,52 @@ class ConversationOrchestrator @Inject constructor(
 
         if (_state.value == OrchestratorState.SPEAKING) {
             _state.value = OrchestratorState.LISTENING
+        }
+    }
+
+    /**
+     * Submit a typed text message and generate a response.
+     * Skips the audio/transcription step — goes straight to THINKING → SPEAKING.
+     */
+    fun submitText(text: String, convId: Long, scope: CoroutineScope) {
+        if (_state.value != OrchestratorState.IDLE) return
+        _state.value = OrchestratorState.THINKING  // guard BEFORE launching coroutine
+        inferenceJob = scope.launch(Dispatchers.Default) {
+            android.util.Log.d("Orchestrator", "submitText: $text")
+            conversationRepo.addMessage(convId, "user", text)
+            _state.value = OrchestratorState.THINKING
+            val prompt = contextBuilder.build(convId, text)
+            val responseBuilder = StringBuilder()
+            val sentenceBuffer = StringBuilder()
+
+            _state.value = OrchestratorState.SPEAKING
+            llmEngine.generate(prompt).collect { token ->
+                android.util.Log.d("Orchestrator", "token: $token")
+                responseBuilder.append(token)
+                sentenceBuffer.append(token)
+                _streamingResponse.emit(token)
+
+                val buf = sentenceBuffer.toString()
+                val sentenceEnd = buf.indexOfFirst { it == '.' || it == '!' || it == '?' }
+                if (sentenceEnd != -1 && sentenceEnd < buf.length - 1) {
+                    ttsEngine.speak(buf.substring(0, sentenceEnd + 1).trim())
+                    sentenceBuffer.clear()
+                    sentenceBuffer.append(buf.substring(sentenceEnd + 1))
+                }
+            }
+
+            val remaining = sentenceBuffer.toString().trim()
+            if (remaining.isNotEmpty()) ttsEngine.speak(remaining)
+
+            val fullResponse = responseBuilder.toString().trim()
+            android.util.Log.d("Orchestrator", "full response: $fullResponse")
+            conversationRepo.addMessage(convId, "assistant", fullResponse)
+
+            scope.launch(Dispatchers.Default) {
+                memoryExtractor.extractAndSave("User: $text\nAssistant: $fullResponse")
+                summarizationWorker.runIfNeeded(convId)
+            }
+            _state.value = OrchestratorState.IDLE
         }
     }
 
