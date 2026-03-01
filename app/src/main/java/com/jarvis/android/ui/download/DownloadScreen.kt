@@ -1,6 +1,9 @@
 package com.jarvis.android.ui.download
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,24 +12,32 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.jarvis.android.ui.theme.Gold
+import com.jarvis.android.ui.theme.GoldDim
+import com.jarvis.android.ui.theme.ObsidianBg
+import com.jarvis.android.ui.theme.ObsidianBorder
+import com.jarvis.android.ui.theme.ObsidianVariant
+import com.jarvis.android.ui.theme.Positive
+import com.jarvis.android.ui.theme.TextPrimary
+import com.jarvis.android.ui.theme.TextSecondary
 
 @Composable
 fun DownloadScreen(
@@ -39,40 +50,89 @@ fun DownloadScreen(
         if (viewModel.allReady) onReady()
     }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text("Jarvis Setup", style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Push model files to the device using adb:",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(24.dp))
-
-            models.forEach { model ->
-                ModelRow(model)
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ObsidianBg)
+            .systemBarsPadding()
+            .padding(horizontal = 28.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Top — wordmark
+        Column(modifier = Modifier.padding(top = 64.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(Gold, CircleShape)
+                )
+                Spacer(Modifier.size(10.dp))
+                Text(
+                    "JARVIS",
+                    style = MaterialTheme.typography.headlineLarge.copy(
+                        fontWeight = FontWeight.Light,
+                        letterSpacing = 8.sp
+                    ),
+                    color = TextPrimary
+                )
             }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Model setup required",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+        }
 
-            Spacer(Modifier.height(24.dp))
-            Button(onClick = { viewModel.checkModels() }) {
-                Text("Check Again")
+        // Middle — model status cards
+        Column(
+            modifier = Modifier.padding(vertical = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            models.forEach { model ->
+                ModelCard(model)
             }
 
             if (models.isNotEmpty() && !viewModel.allReady) {
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(ObsidianVariant)
+                        .border(0.5.dp, ObsidianBorder, RoundedCornerShape(10.dp))
+                        .padding(14.dp)
+                ) {
+                    Column {
+                        Text(
+                            "ADB COMMAND",
+                            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
+                            color = TextSecondary
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "adb push <model> \\\n  /sdcard/Android/data/com.jarvis.android/files/",
+                            style = MaterialTheme.typography.labelSmall.copy(lineHeight = 18.sp),
+                            color = Gold.copy(alpha = 0.8f),
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
+
+        // Bottom — check button
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 40.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            TextButton(onClick = { viewModel.checkModels() }) {
                 Text(
-                    "adb push <model_file> /sdcard/Android/data/com.jarvis.android/files/",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    "CHECK AGAIN",
+                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
+                    color = Gold
                 )
             }
         }
@@ -80,37 +140,51 @@ fun DownloadScreen(
 }
 
 @Composable
-private fun ModelRow(model: ModelStatus) {
+private fun ModelCard(model: ModelStatus) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .clip(RoundedCornerShape(12.dp))
+            .background(ObsidianVariant)
+            .border(
+                width = 0.5.dp,
+                color = if (model.exists) Gold.copy(alpha = 0.3f) else ObsidianBorder,
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(model.name, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                model.name,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                color = TextPrimary
+            )
+            Spacer(Modifier.height(2.dp))
             Text(
                 model.description,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = TextSecondary
             )
+            Spacer(Modifier.height(6.dp))
             Text(
-                model.path,
+                model.path.substringAfterLast("/"),   // just the filename
                 style = MaterialTheme.typography.labelSmall,
-                fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (model.exists) Gold.copy(alpha = 0.6f) else TextSecondary,
+                fontFamily = FontFamily.Monospace
             )
         }
-        Icon(
-            imageVector = if (model.exists) Icons.Default.CheckCircle
-                          else Icons.Default.Warning,
-            contentDescription = if (model.exists) "Ready" else "Missing",
-            tint = if (model.exists) MaterialTheme.colorScheme.primary
-                   else MaterialTheme.colorScheme.onSurfaceVariant,
+
+        // Status dot
+        Box(
             modifier = Modifier
-                .padding(start = 12.dp)
-                .size(28.dp)
+                .padding(start = 16.dp)
+                .size(8.dp)
+                .background(
+                    color = if (model.exists) Positive else ObsidianBorder,
+                    shape = CircleShape
+                )
         )
     }
 }
