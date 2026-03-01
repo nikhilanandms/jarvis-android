@@ -16,7 +16,10 @@ Java_com_jarvis_android_engine_WhisperEngine_nativeInit(
     LOGI("Loading Whisper model from: %s", path);
 
     struct whisper_context_params params = whisper_context_default_params();
-    params.use_gpu = false;
+    params.use_gpu    = false;
+    // Disable flash attention — crashes on Snapdragon 8 Gen 3 with SIGSEGV
+    // in ggml_compute_forward_flash_attn_ext (null pointer dereference)
+    params.flash_attn = false;
 
     struct whisper_context *ctx = whisper_init_from_file_with_params(path, params);
     env->ReleaseStringUTFChars(modelPath, path);

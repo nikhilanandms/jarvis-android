@@ -48,15 +48,23 @@ class ChatViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            var prevState = OrchestratorState.IDLE
             orchestratorState.collect { state ->
                 when (state) {
-                    // New request starting — clear old streaming bubble
+                    // New text request starting — clear previous streaming bubble
                     OrchestratorState.THINKING -> _currentResponse.value = ""
-                    // Generation complete — clear streaming bubble so DB message is sole source
-                    OrchestratorState.IDLE     -> _currentResponse.value = ""
+                    // Text generation complete (submitText path)
+                    OrchestratorState.IDLE -> _currentResponse.value = ""
+                    // Voice response complete: SPEAKING → LISTENING means Jarvis finished talking
+                    OrchestratorState.LISTENING -> {
+                        if (prevState == OrchestratorState.SPEAKING) {
+                            _currentResponse.value = ""
+                        }
+                    }
                     else -> Unit
                 }
                 if (state != OrchestratorState.LISTENING) _voiceActive.value = false
+                prevState = state
             }
         }
     }
