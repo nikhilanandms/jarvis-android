@@ -49,11 +49,13 @@ class ChatViewModel @Inject constructor(
         }
         viewModelScope.launch {
             orchestratorState.collect { state ->
-                // Clear streaming bubble only when a new request starts (THINKING)
-                if (state == OrchestratorState.THINKING) {
-                    _currentResponse.value = ""
+                when (state) {
+                    // New request starting — clear old streaming bubble
+                    OrchestratorState.THINKING -> _currentResponse.value = ""
+                    // Generation complete — clear streaming bubble so DB message is sole source
+                    OrchestratorState.IDLE     -> _currentResponse.value = ""
+                    else -> Unit
                 }
-                // Keep voiceActive in sync: false unless actively listening
                 if (state != OrchestratorState.LISTENING) _voiceActive.value = false
             }
         }
