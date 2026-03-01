@@ -60,14 +60,16 @@ class ConversationOrchestrator @Inject constructor(
         listeningJob = scope.launch(Dispatchers.Default) {
             val pcmBuffer = mutableListOf<Float>()
             var speechActive = false
-            var chunkCount = 0
+            var silentChunks = 0
+
+            // Tuning constants
+            // 15 silent chunks × 32ms = ~480ms silence → end of utterance
+            val SILENCE_TO_END = 15
+            // Whisper needs at least 1s (16000 samples) to work reliably
+            val MIN_SPEECH_SAMPLES = 16000
 
             audioRecorder.record().collect { chunk ->
-                val isSpeech = vadEngine.isSpeech(chunk)
-                chunkCount++
-                if (chunkCount % 50 == 0) {
-                    android.util.Log.d("Orchestrator", "chunks=$chunkCount speechActive=$speechActive isSpeech=$isSpeech")
-                }
+                val isSpeech = vadEngine.isSpeech(chunk, threshold = 0.3f)
 
                 when {
                     // Barge-in: user speaks while Jarvis is talking
@@ -76,6 +78,7 @@ class ConversationOrchestrator @Inject constructor(
                         inferenceJob?.cancel()
                         pcmBuffer.clear()
                         speechActive = true
+                        silentChunks = 0
                         pcmBuffer.addAll(chunk.toList())
                         _state.value = OrchestratorState.LISTENING
                     }
@@ -83,16 +86,27 @@ class ConversationOrchestrator @Inject constructor(
                     // Accumulate speech
                     isSpeech -> {
                         speechActive = true
+                        silentChunks = 0
                         pcmBuffer.addAll(chunk.toList())
                     }
 
-                    // Silence after speech → end of utterance
+                    // Silence while speech was active — wait for sustained silence
                     !isSpeech && speechActive -> {
-                        speechActive = false
-                        val pcm = pcmBuffer.toFloatArray()
-                        pcmBuffer.clear()
-                        inferenceJob = scope.launch(Dispatchers.Default) {
-                            processUtterance(pcm, convId, scope)
+                        silentChunks++
+                        pcmBuffer.addAll(chunk.toList()) // include trailing silence for natural end
+                        if (silentChunks >= SILENCE_TO_END) {
+                            speechActive = false
+                            silentChunks = 0
+                            val pcm = pcmBuffer.toFloatArray()
+                            pcmBuffer.clear()
+                            // Only send to Whisper if enough audio was captured
+                            if (pcm.size >= MIN_SPEECH_SAMPLES) {
+                                inferenceJob = scope.launch(Dispatchers.Default) {
+                                    processUtterance(pcm, convId, scope)
+                                }
+                            } else {
+                                android.util.Log.d("Orchestrator", "Utterance too short (${pcm.size} samples), discarding")
+                            }
                         }
                     }
                 }
@@ -102,6 +116,11 @@ class ConversationOrchestrator @Inject constructor(
 
     private suspend fun processUtterance(pcm: FloatArray, convId: Long, scope: CoroutineScope) {
         android.util.Log.d("Orchestrator", "processUtterance: ${pcm.size} samples")
+        if (pcm.size < 16000) {
+            android.util.Log.d("Orchestrator", "Discarding short audio (${pcm.size} samples < 16000)")
+            _state.value = OrchestratorState.LISTENING
+            return
+        }
         // Transcribe
         _state.value = OrchestratorState.TRANSCRIBING
         val transcript = whisperEngine.transcribe(pcm)

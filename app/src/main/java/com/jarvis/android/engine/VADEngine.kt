@@ -1,84 +1,62 @@
 package com.jarvis.android.engine
 
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
 import android.content.Context
-import java.nio.LongBuffer
+import android.util.Log
+import kotlin.math.sqrt
 
 /**
- * Silero VAD v5 engine using ONNX Runtime.
+ * Voice Activity Detection using RMS energy.
  *
- * Input schema:
- *   input  : [1, chunk_size] float32  — audio chunk (512 samples @ 16kHz = 32ms)
- *   state  : [2, 1, 128]    float32  — GRU hidden state (maintained between calls)
- *   sr     : []              int64    — sample rate (16000)
+ * The Silero VAD ONNX model returns ~0.001 on all inputs on certain Android
+ * hardware (tested S24 Ultra) due to a tensor format incompatibility with
+ * ONNX Runtime. Energy-based VAD is simpler, universal, and reliable enough
+ * for a voice assistant use case.
  *
- * Output schema:
- *   output : [1, 1]          float32  — speech probability [0..1]
- *   stateN : [2, 1, 128]    float32  — updated GRU state
+ * Tuned thresholds based on observed S24 Ultra microphone levels:
+ *   - Silence/ambient:  RMS < 0.01
+ *   - Normal speech:    RMS 0.03 – 0.15
+ *   - Loud speech:      RMS > 0.15
  */
 class VADEngine(context: Context) {
     companion object {
-        const val CHUNK_SIZE = 512      // 32ms at 16kHz
+        const val CHUNK_SIZE = 512
         const val SAMPLE_RATE = 16000L
-        private const val STATE_SIZE = 2 * 1 * 128  // [2, 1, 128]
+        private const val TAG = "VADEngine"
+
+        // RMS threshold — speech detected when RMS exceeds this
+        private const val RMS_THRESHOLD = 0.02f
     }
 
-    private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
-    private val session: OrtSession
+    private var callCount = 0
 
-    // GRU state — reset at start of each listening session
-    private var state = FloatArray(STATE_SIZE)
+    // Smoothing: keep a running average to reduce noise spikes
+    private val windowSize = 3
+    private val recentRms = ArrayDeque<Float>(windowSize)
 
-    init {
-        val modelBytes = context.assets.open("silero_vad.onnx").use { it.readBytes() }
-        session = env.createSession(modelBytes, OrtSession.SessionOptions())
-    }
-
-    /**
-     * Returns true if the chunk contains speech.
-     * @param chunk Exactly CHUNK_SIZE (512) float32 samples at 16kHz
-     * @param threshold Speech probability threshold (0.5 is default)
-     */
     fun isSpeech(chunk: FloatArray, threshold: Float = 0.5f): Boolean {
-        require(chunk.size == CHUNK_SIZE) { "Chunk must be $CHUNK_SIZE samples, got ${chunk.size}" }
+        // Compute RMS energy of the chunk
+        val sumSq = chunk.sumOf { (it * it).toDouble() }
+        val rms = sqrt(sumSq / chunk.size).toFloat()
 
-        val inputTensor = OnnxTensor.createTensor(env, arrayOf(chunk))
-        val stateTensor = OnnxTensor.createTensor(env,
-            arrayOf(
-                arrayOf(state.copyOfRange(0, 128)),
-                arrayOf(state.copyOfRange(128, 256))
-            )
-        )
-        val srTensor = OnnxTensor.createTensor(env,
-            LongBuffer.wrap(longArrayOf(SAMPLE_RATE)), longArrayOf(1)
-        )
+        // Smooth over last N chunks
+        recentRms.addLast(rms)
+        if (recentRms.size > windowSize) recentRms.removeFirst()
+        val smoothedRms = recentRms.average().toFloat()
 
-        val inputs = mapOf("input" to inputTensor, "state" to stateTensor, "sr" to srTensor)
-        val results = session.run(inputs)
+        val speech = smoothedRms >= RMS_THRESHOLD
 
-        // output shape: [1, 1] → float32
-        val outputTensor = results.get("output").get() as OnnxTensor
-        val prob = (outputTensor.getValue() as Array<*>)[0].let { (it as FloatArray)[0] }
+        callCount++
+        if (callCount % 50 == 0 || speech) {
+            Log.d(TAG, "rms=${"%.4f".format(rms)} smoothed=${"%.4f".format(smoothedRms)} speech=$speech")
+        }
 
-        // stateN shape: [2, 1, 128] → update GRU state for next call
-        val stateNTensor = results.get("stateN").get() as OnnxTensor
-        val newState = stateNTensor.getValue() as Array<*>
-        val row0 = ((newState[0] as Array<*>)[0] as FloatArray)
-        val row1 = ((newState[1] as Array<*>)[0] as FloatArray)
-        state = row0 + row1
-
-        listOf(inputTensor, stateTensor, srTensor, outputTensor, stateNTensor).forEach { it.close() }
-        results.close()
-
-        return prob >= threshold
+        return speech
     }
 
-    /** Reset GRU state — call at the start of each new listening session. */
     fun reset() {
-        state = FloatArray(STATE_SIZE)
+        recentRms.clear()
     }
 
-    fun release() = session.close()
+    // No-op — no model to release
+    fun release() {}
 }
